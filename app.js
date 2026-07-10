@@ -2,6 +2,11 @@
 const STATIC_URL = "https://api-public.odpt.org/api/v4/files/Toei/data/ToeiBus-GTFS.zip";
 const REALTIME_URL = "https://api-public.odpt.org/api/v4/gtfs/realtime/ToeiBus";
 
+const TARGET_ROUTE = "王78";
+const ORIGIN_STOP = "南常盤台";
+const DEST_STOP = "王子五丁目";
+const TARGET_HEADSIGNS = ["王子駅前", "王子"];
+
 const state = {
   gtfs: null,
   realtime: null,
@@ -11,6 +16,27 @@ const state = {
 };
 
 const $ = (id) => document.getElementById(id);
+
+function normalizeText(value) {
+  return String(value || "")
+    .normalize("NFKC")
+    .replace(/[［\[].*?[］\]]/g, "")
+    .replace(/[＜<].*?[＞>]/g, "")
+    .replace(/[（）()]/g, "")
+    .replace(/\s+/g, "")
+    .trim();
+}
+function hasText(value, target) {
+  return normalizeText(value).includes(normalizeText(target));
+}
+function isTargetRoute(route) {
+  const target = normalizeText(TARGET_ROUTE);
+  return [route.route_short_name, route.route_long_name, route.route_id]
+    .some(v => normalizeText(v).includes(target));
+}
+function stopMatches(stopName, targetName) {
+  return normalizeText(stopName) === normalizeText(targetName) || hasText(stopName, targetName);
+}
 
 function parseCSV(text) {
   const rows = [];
@@ -79,11 +105,12 @@ async function loadGTFS() {
 }
 
 function prepareRoute(data) {
-  const routeIds = new Set(data.routes.filter(r => (r.route_short_name || "").replace(/\s/g,"") === "王78").map(r => r.route_id));
+  const routeIds = new Set(data.routes.filter(isTargetRoute).map(r => r.route_id));
   const routeTrips = data.trips.filter(t => routeIds.has(t.route_id));
   const tripIds = new Set(routeTrips.map(t => t.trip_id));
   const st = data.stopTimes.filter(s => tripIds.has(s.trip_id));
   const byTrip = new Map();
+
   st.forEach(s => {
     if (!byTrip.has(s.trip_id)) byTrip.set(s.trip_id, []);
     byTrip.get(s.trip_id).push(s);
@@ -94,11 +121,29 @@ function prepareRoute(data) {
   const candidates = [];
   for (const trip of routeTrips) {
     const list = byTrip.get(trip.trip_id) || [];
-    const oi = list.findIndex(x => (stopById.get(x.stop_id)?.stop_name || "") === "南常盤台");
-    const di = list.findIndex(x => (stopById.get(x.stop_id)?.stop_name || "") === "王子五丁目");
-    if (oi >= 0 && di > oi) candidates.push({...trip, stopTimes: list, originIndex: oi, destIndex: di});
+    const oi = list.findIndex(x => stopMatches(stopById.get(x.stop_id)?.stop_name || "", ORIGIN_STOP));
+    const di = list.findIndex(x => stopMatches(stopById.get(x.stop_id)?.stop_name || "", DEST_STOP));
+    const headsignOk = !trip.trip_headsign || TARGET_HEADSIGNS.some(h => hasText(trip.trip_headsign, h));
+    if (oi >= 0 && di > oi && headsignOk) candidates.push({...trip, stopTimes: list, originIndex: oi, destIndex: di});
   }
-  if (!candidates.length) throw new Error("王78の「南常盤台 → 王子五丁目」を公式データから特定できませんでした。");
+
+  // trip_headsign の表記差で拾えない場合の保険
+  if (!candidates.length) {
+    for (const trip of routeTrips) {
+      const list = byTrip.get(trip.trip_id) || [];
+      const oi = list.findIndex(x => stopMatches(stopById.get(x.stop_id)?.stop_name || "", ORIGIN_STOP));
+      const di = list.findIndex(x => stopMatches(stopById.get(x.stop_id)?.stop_name || "", DEST_STOP));
+      if (oi >= 0 && di > oi) candidates.push({...trip, stopTimes: list, originIndex: oi, destIndex: di});
+    }
+  }
+
+  if (!routeIds.size) {
+    throw new Error(`公式データ内で王78の路線番号を見つけられませんでした。`);
+  }
+  if (!candidates.length) {
+    const routeLabel = [...new Set(routeTrips.map(t => t.trip_headsign).filter(Boolean))].slice(0, 6).join(" / ");
+    throw new Error(`王78は見つかりましたが、南常盤台から王子五丁目へ向かう便を特定できませんでした。候補行先: ${routeLabel || "なし"}`);
+  }
 
   data.routeTrips = candidates;
   data.stopById = stopById;
@@ -130,13 +175,20 @@ function tripsForDay(type) {
   let trips = state.gtfs.routeTrips;
   if (type === "auto") trips = trips.filter(t => serviceActive(t.service_id));
   else trips = trips.filter(t => serviceDayType(t.service_id) === type);
+
   const unique = new Map();
   for (const t of trips) {
     const depart = sec(t.stopTimes[t.originIndex].departure_time);
-    const key = `${depart}`;
+    const key = `${depart}-${t.service_id}`;
     if (!unique.has(key)) unique.set(key, {...t, depart});
   }
-  return [...unique.values()].sort((a,b) => a.depart-b.depart);
+
+  // 同じ発時刻が複数カレンダーにまたがる時は1つにまとめる
+  const byTime = new Map();
+  for (const t of unique.values()) {
+    if (!byTime.has(t.depart)) byTime.set(t.depart, t);
+  }
+  return [...byTime.values()].sort((a,b) => a.depart-b.depart);
 }
 
 const protoText = `
@@ -246,12 +298,12 @@ function renderTimetable(type = state.selectedDay) {
     if (!grouped.has(h)) grouped.set(h, []);
     grouped.get(h).push(m);
   });
-  const n = nowSeconds();
+  const nextDepart = trips.find(t => t.depart >= nowSeconds())?.depart;
   $("timetable").innerHTML = [...grouped.entries()].map(([h,mins]) =>
     `<div class="timetable-hour"><div class="hour">${String(h).padStart(2,"0")}</div>
       <div class="minutes">${mins.map(m => {
         const s = h*3600+m*60;
-        const cls = s < n ? "past" : (s >= n && s === trips.find(t => t.depart >= n)?.depart ? "next" : "");
+        const cls = s < nowSeconds() ? "past" : (s === nextDepart ? "next" : "");
         return `<span class="minute ${cls}">${String(m).padStart(2,"0")}</span>`;
       }).join("")}</div></div>`
   ).join("");
@@ -329,7 +381,7 @@ function init() {
   $("timeInput").addEventListener("change", renderNext);
   $("dayType").addEventListener("change", renderNext);
 
-  if ("serviceWorker" in navigator) navigator.serviceWorker.register("./sw.js").catch(()=>{});
+  if ("serviceWorker" in navigator) navigator.serviceWorker.register("./sw.js?v=2").catch(()=>{});
   refresh(true);
   setInterval(() => refresh(false), 60000);
 }
