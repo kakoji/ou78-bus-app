@@ -5,75 +5,29 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <meta name="theme-color" content="#0a84ff">
   <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="default">
-  <meta name="apple-mobile-web-app-title" content="王78バス">
   <title>王78 南常盤台 → 王子五丁目</title>
   <link rel="manifest" href="./manifest.webmanifest">
-  <link rel="stylesheet" href="./styles.css?v=2">
-  <script src="https://cdn.jsdelivr.net/npm/fflate@0.8.2/umd/index.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/protobufjs@7.4.0/dist/protobuf.min.js"></script>
+  <link rel="stylesheet" href="./styles.css?v=3">
 </head>
 <body>
-  <header class="topbar">
-    <div>
-      <p class="eyebrow">都営バス 王78</p>
-      <h1>南常盤台 → 王子五丁目</h1>
+<header class="topbar">
+  <div><p class="eyebrow">都営バス 王78</p><h1>南常盤台 → 王子五丁目</h1></div>
+  <button id="refreshBtn" class="icon-button">↻</button>
+</header>
+<main>
+  <section class="status-card">
+    <div class="status-row">
+      <div><span class="label">指定時刻</span><input id="timeInput" type="time"></div>
+      <div><span class="label">運行日</span><select id="dayType"><option value="auto">今日</option><option value="weekday">平日</option><option value="saturday">土曜日</option><option value="holiday">休日</option></select></div>
     </div>
-    <button id="refreshBtn" class="icon-button" aria-label="最新情報に更新">↻</button>
-  </header>
-
-  <main>
-    <section class="status-card">
-      <div class="status-row">
-        <div>
-          <span class="label">指定時刻</span>
-          <input id="timeInput" type="time">
-        </div>
-        <div>
-          <span class="label">運行日</span>
-          <select id="dayType">
-            <option value="auto">今日</option>
-            <option value="weekday">平日</option>
-            <option value="saturday">土曜日</option>
-            <option value="holiday">休日</option>
-          </select>
-        </div>
-      </div>
-      <p id="lastUpdated" class="muted">データを読み込んでいます…</p>
-    </section>
-
-    <nav class="tabs" aria-label="表示切替">
-      <button class="tab active" data-tab="next">次の3便</button>
-      <button class="tab" data-tab="timetable">時刻表</button>
-    </nav>
-
-    <section id="nextPanel" class="panel">
-      <div id="nextBuses" class="bus-list">
-        <div class="loading">公式データを取得中です…</div>
-      </div>
-      <p class="note">遅れ時間は、公開されている車両位置と予定時刻を照合した概算です。</p>
-    </section>
-
-    <section id="timetablePanel" class="panel hidden">
-      <div class="day-switch">
-        <button data-day="weekday">平日</button>
-        <button data-day="saturday">土曜</button>
-        <button data-day="holiday">休日</button>
-      </div>
-      <div id="timetable" class="timetable"></div>
-    </section>
-
-    <section id="detailPanel" class="panel hidden">
-      <button id="backBtn" class="back-button">‹ 次の3便へ戻る</button>
-      <div id="detailHeader"></div>
-      <ol id="stopList" class="stop-list"></ol>
-    </section>
-  </main>
-
-  <footer>
-    データ提供：東京都交通局・公共交通オープンデータ協議会（CC BY 4.0）
-  </footer>
-
-  <script src="./app.js?v=2"></script>
+    <p id="lastUpdated" class="muted">データを読み込んでいます…</p>
+  </section>
+  <nav class="tabs"><button class="tab active" data-tab="next">次の3便</button><button class="tab" data-tab="timetable">時刻表</button></nav>
+  <section id="nextPanel" class="panel"><div id="nextBuses" class="bus-list"><div class="loading">データを読み込んでいます…</div></div><p class="note">v3ではiPhoneが重い公式ZIPを直接読まないようにしています。</p></section>
+  <section id="timetablePanel" class="panel hidden"><div class="day-switch"><button data-day="weekday">平日</button><button data-day="saturday">土曜</button><button data-day="holiday">休日</button></div><div id="timetable" class="timetable"></div></section>
+  <section id="detailPanel" class="panel hidden"><button id="backBtn" class="back-button">‹ 次の3便へ戻る</button><div id="detailHeader"></div><ol id="stopList" class="stop-list"></ol></section>
+</main>
+<footer>データ提供：東京都交通局・公共交通オープンデータ協議会（CC BY 4.0）</footer>
+<script src="./app.js?v=3"></script>
 </body>
 </html>
