@@ -1,0 +1,10 @@
+{
+  "name": "王78 南常盤台 → 王子五丁目",
+  "short_name": "王78バス",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#f3f4f6",
+  "theme_color": "#0a84ff",
+  "lang": "ja",
+  "icons": []
+}
