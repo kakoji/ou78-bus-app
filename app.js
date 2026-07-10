@@ -1,6 +1,88 @@
-const ROUTES_DATA_URL = "./routes_data.json?v=6";
+const ROUTES_DATA_URL = "./routes_data.json?v=7";
 const REALTIME_URL = "https://api-public.odpt.org/api/v4/gtfs/realtime/ToeiBus";
 const STORAGE_KEY = "bus-routes-app.selected-route.v1";
+const KOKUSAI_BUS_LOCATION_URL = "https://transfer.navitime.biz/5931bus/pc/map/Top?window=busLocation";
+const KOKUSAI_TIMETABLE_URL = "https://transfer.navitime.biz/5931bus/pc/map/Top?window=transfer";
+
+const EXTERNAL_ROUTE_PAIRS = [
+  {
+    pairId: "kokusai-aka53-tokiwadai-akabane-west",
+    operator: "国際興業バス",
+    routeShortName: "赤53",
+    title: "ときわ台駅 ⇄ 赤羽駅西口",
+    routes: [
+      { id: "kokusai-aka53-tokiwadai-akabane-west", routeShortName: "赤53", origin: "ときわ台駅", destination: "赤羽駅西口", directionLabel: "赤羽駅西口方面" },
+      { id: "kokusai-aka53-akabane-west-tokiwadai", routeShortName: "赤53", origin: "赤羽駅西口", destination: "ときわ台駅", directionLabel: "ときわ台駅方面" }
+    ]
+  },
+  {
+    pairId: "kokusai-aka51-57-nakacho-akabane-west",
+    operator: "国際興業バス",
+    routeShortName: "赤51・赤57",
+    title: "仲町区民事務所 ⇄ 赤羽駅西口",
+    routes: [
+      { id: "kokusai-aka51-nakacho-akabane-west", routeShortName: "赤51", origin: "仲町区民事務所", destination: "赤羽駅西口", directionLabel: "赤羽駅西口方面" },
+      { id: "kokusai-aka57-akabane-west-nakacho", routeShortName: "赤57", origin: "赤羽駅西口", destination: "仲町区民事務所", directionLabel: "日大病院方面・仲町区民事務所下車" }
+    ]
+  },
+  {
+    pairId: "kokusai-aka31-minamitokiwadai-akabane-east",
+    operator: "国際興業バス",
+    routeShortName: "赤31",
+    title: "南常盤台 ⇄ 赤羽駅東口",
+    routes: [
+      { id: "kokusai-aka31-minamitokiwadai-akabane-east", routeShortName: "赤31", origin: "南常盤台", destination: "赤羽駅東口", directionLabel: "赤羽駅東口方面" },
+      { id: "kokusai-aka31-akabane-east-minamitokiwadai", routeShortName: "赤31", origin: "赤羽駅東口", destination: "南常盤台", directionLabel: "高円寺駅北口方面・南常盤台下車" }
+    ]
+  },
+  {
+    pairId: "kokusai-ou54-oji-tokiwadai",
+    operator: "国際興業バス",
+    routeShortName: "王54",
+    title: "王子駅 ⇄ ときわ台駅",
+    routes: [
+      { id: "kokusai-ou54-oji-tokiwadai", routeShortName: "王54", origin: "王子駅", destination: "ときわ台駅", directionLabel: "上板橋駅方面・ときわ台駅下車" },
+      { id: "kokusai-ou54-tokiwadai-oji", routeShortName: "王54", origin: "ときわ台駅", destination: "王子駅", directionLabel: "王子駅方面" }
+    ]
+  },
+  {
+    pairId: "kokusai-ou54-oji5-tokiwadai",
+    operator: "国際興業バス",
+    routeShortName: "王54",
+    title: "王子五丁目 ⇄ ときわ台駅",
+    routes: [
+      { id: "kokusai-ou54-oji5-tokiwadai", routeShortName: "王54", origin: "王子五丁目", destination: "ときわ台駅", directionLabel: "上板橋駅方面・ときわ台駅下車" },
+      { id: "kokusai-ou54-tokiwadai-oji5", routeShortName: "王54", origin: "ときわ台駅", destination: "王子五丁目", directionLabel: "王子駅方面・王子五丁目下車" }
+    ]
+  },
+  {
+    pairId: "kokusai-aka51-ikebukuro-akabane-west",
+    operator: "国際興業バス",
+    routeShortName: "赤51",
+    title: "池袋駅東口 ⇄ 赤羽駅西口",
+    routes: [
+      { id: "kokusai-aka51-ikebukuro-akabane-west", routeShortName: "赤51", origin: "池袋駅東口", destination: "赤羽駅西口", directionLabel: "赤羽駅西口方面" },
+      { id: "kokusai-aka51-akabane-west-ikebukuro", routeShortName: "赤51", origin: "赤羽駅西口", destination: "池袋駅東口", directionLabel: "池袋駅東口方面" }
+    ]
+  },
+  {
+    pairId: "kokusai-hikari02-ikebukuro-shimozubashi",
+    operator: "国際興業バス",
+    routeShortName: "光02",
+    title: "池袋駅東口 ⇄ 下頭橋",
+    routes: [
+      { id: "kokusai-hikari02-ikebukuro-shimozubashi", routeShortName: "光02", origin: "池袋駅東口", destination: "下頭橋", directionLabel: "光が丘駅方面・下頭橋下車" },
+      { id: "kokusai-hikari02-shimozubashi-ikebukuro", routeShortName: "光02", origin: "下頭橋", destination: "池袋駅東口", directionLabel: "池袋駅東口方面" }
+    ]
+  }
+];
+
+const externalRoutesById = new Map();
+for (const pair of EXTERNAL_ROUTE_PAIRS) {
+  for (const route of pair.routes) {
+    externalRoutesById.set(route.id, { ...route, pairId: pair.pairId, pairTitle: pair.title, operator: pair.operator });
+  }
+}
 
 const state = {
   data: null,
@@ -10,6 +92,7 @@ const state = {
   calendarDateMap: new Map(),
   realtime: null,
   selectedRoute: null,
+  selectedExternalRoute: null,
   selectedDay: "weekday",
   currentTrips: [],
   selectedTrip: null
@@ -306,14 +389,88 @@ function renderRoutePairs() {
     button.addEventListener("click", () => selectRoute(button.dataset.routeId));
   });
 
-  const planned = state.data.plannedRoutes || [];
-  if (planned.length) {
-    $("plannedRoutesBox").classList.remove("hidden");
-    $("plannedRoutesList").innerHTML = planned.map((item) => `
-      <div class="planned-item">
-        <strong>${item.route}　${item.pair}</strong>
-        <span>${item.operator}・準備中</span>
-      </div>`).join("");
+  renderExternalRoutePairs();
+}
+
+
+function renderExternalRoutePairs() {
+  const lastRouteId = localStorage.getItem(STORAGE_KEY);
+  $("externalRoutesSection").classList.remove("hidden");
+  $("externalRoutePairsList").innerHTML = EXTERNAL_ROUTE_PAIRS.map((pair) => {
+    const directions = pair.routes.map((route, index) => {
+      const lastUsed = lastRouteId === `external:${route.id}` ? '<span class="last-used-badge">前回使用</span>' : "";
+      const primaryClass = index === 0 ? " primary" : "";
+      return `
+        <button class="route-direction-button external-direction-button${primaryClass}" type="button" data-external-route-id="${route.id}">
+          <span class="route-direction-main">
+            <span class="route-direction-name">${route.origin} → ${route.destination}${lastUsed}</span>
+            <span class="route-direction-label">${route.routeShortName}・${route.directionLabel}</span>
+          </span>
+          <span class="route-direction-arrow">›</span>
+        </button>`;
+    }).join("");
+
+    return `
+      <article class="route-pair-card external-pair-card">
+        <div class="route-pair-head">
+          <span class="route-code external-route-code">${pair.routeShortName}</span>
+          <span class="route-operator">${pair.operator}</span>
+        </div>
+        <div class="route-pair-title">${pair.title}</div>
+        <div class="route-direction-list">${directions}</div>
+      </article>`;
+  }).join("");
+
+  document.querySelectorAll(".external-direction-button").forEach((button) => {
+    button.addEventListener("click", () => selectExternalRoute(button.dataset.externalRouteId));
+  });
+}
+
+function updateHeaderForExternalRoute(route) {
+  $("headerEyebrow").textContent = `${route.operator} ${route.routeShortName}`;
+  $("headerTitle").textContent = `${route.origin} → ${route.destination}`;
+  $("routeListBtn").classList.remove("hidden");
+  $("refreshBtn").classList.add("hidden");
+  document.title = `${route.routeShortName} ${route.origin} → ${route.destination}`;
+}
+
+function selectExternalRoute(routeId, options = {}) {
+  const route = externalRoutesById.get(routeId);
+  if (!route) return;
+
+  state.selectedRoute = null;
+  state.selectedExternalRoute = route;
+  state.selectedTrip = null;
+  localStorage.setItem(STORAGE_KEY, `external:${route.id}`);
+
+  $("routePickerPanel").classList.add("hidden");
+  $("routeView").classList.add("hidden");
+  $("externalRouteView").classList.remove("hidden");
+  updateHeaderForExternalRoute(route);
+
+  $("externalRouteCode").textContent = route.routeShortName;
+  $("externalRouteTitle").textContent = `${route.origin} → ${route.destination}`;
+  $("externalRouteDirection").textContent = route.directionLabel;
+  $("externalOrigin").textContent = route.origin;
+  $("externalDestination").textContent = route.destination;
+  $("copyStatus").textContent = "";
+  $("busLocationLink").href = KOKUSAI_BUS_LOCATION_URL;
+  $("timetableSearchLink").href = KOKUSAI_TIMETABLE_URL;
+
+  window.scrollTo({ top: 0, behavior: options.initial ? "auto" : "smooth" });
+}
+
+async function copyRouteText(kind) {
+  const route = state.selectedExternalRoute;
+  if (!route) return;
+  const text = kind === "origin" ? route.origin : route.destination;
+  const label = kind === "origin" ? "出発地" : "目的地";
+
+  try {
+    await navigator.clipboard.writeText(text);
+    $("copyStatus").textContent = `${label}「${text}」をコピーしました。`;
+  } catch (_) {
+    $("copyStatus").textContent = `${label}：${text}`;
   }
 }
 
@@ -335,8 +492,10 @@ function updateHeaderForRoute(route) {
 
 function showRoutePicker() {
   state.selectedTrip = null;
+  state.selectedExternalRoute = null;
   $("routePickerPanel").classList.remove("hidden");
   $("routeView").classList.add("hidden");
+  $("externalRouteView").classList.add("hidden");
   updateHeaderForPicker();
   renderRoutePairs();
   window.scrollTo({ top: 0, behavior: "smooth" });
@@ -347,10 +506,12 @@ async function selectRoute(routeId, options = {}) {
   if (!route) return;
 
   state.selectedRoute = route;
+  state.selectedExternalRoute = null;
   state.selectedTrip = null;
   localStorage.setItem(STORAGE_KEY, route.id);
 
   $("routePickerPanel").classList.add("hidden");
+  $("externalRouteView").classList.add("hidden");
   $("routeView").classList.remove("hidden");
   updateHeaderForRoute(route);
   showTab("next");
@@ -571,6 +732,8 @@ async function init() {
   $("backBtn").addEventListener("click", () => showTab("next"));
   $("routeListBtn").addEventListener("click", showRoutePicker);
   $("refreshBtn").addEventListener("click", () => refresh(false));
+  $("copyOriginBtn").addEventListener("click", () => copyRouteText("origin"));
+  $("copyDestinationBtn").addEventListener("click", () => copyRouteText("destination"));
   $("timeInput").addEventListener("change", renderNext);
   $("dayType").addEventListener("change", renderNext);
 
@@ -586,7 +749,14 @@ async function init() {
     renderRoutePairs();
 
     const lastRouteId = localStorage.getItem(STORAGE_KEY);
-    if (lastRouteId && state.routesById.has(lastRouteId)) {
+    if (lastRouteId?.startsWith("external:")) {
+      const externalId = lastRouteId.slice("external:".length);
+      if (externalRoutesById.has(externalId)) {
+        selectExternalRoute(externalId, { initial: true });
+      } else {
+        showRoutePicker();
+      }
+    } else if (lastRouteId && state.routesById.has(lastRouteId)) {
       await selectRoute(lastRouteId, { initial: true });
     } else {
       showRoutePicker();

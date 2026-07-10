@@ -243,3 +243,197 @@ footer {
   .departure { font-size: 26px; }
   .delay { font-size: 14px; }
 }
+
+/* v7: 国際興業バスの公式サイト連携 */
+.external-routes-section {
+  margin-top: 22px;
+}
+
+.section-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 2px 10px;
+}
+
+.section-heading h2 {
+  margin: 2px 0 0;
+  font-size: 20px;
+}
+
+.section-kicker {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.official-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: #e9f8f2;
+  color: var(--green);
+  font-size: 11px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.external-routes-note {
+  margin: 0 2px 12px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.external-pair-card {
+  border: 1px solid #e1e5e8;
+}
+
+.external-route-code {
+  background: #eef8f4;
+  color: #14795f;
+}
+
+.external-direction-button.primary {
+  border-color: #bfe4d8;
+  background: #f6fcfa;
+}
+
+.external-route-card {
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 2px 12px rgba(0,0,0,.05);
+  padding: 18px;
+}
+
+.external-route-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.external-route-title {
+  margin: 16px 0 5px;
+  font-size: 24px;
+  line-height: 1.35;
+}
+
+.external-route-direction {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.route-copy-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.route-copy-item {
+  min-width: 0;
+  padding: 13px;
+  border: 1px solid #e0e3e7;
+  border-radius: 12px;
+  background: #fafbfc;
+}
+
+.route-copy-label {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.route-copy-item strong {
+  display: block;
+  margin-top: 4px;
+  font-size: 16px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.copy-button {
+  width: 100%;
+  margin-top: 10px;
+  padding: 9px 8px;
+  border: 0;
+  border-radius: 9px;
+  background: #edf4fb;
+  color: var(--blue);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.copy-status {
+  min-height: 20px;
+  margin: 9px 2px 0;
+  color: var(--green);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.official-link-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.official-link {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 50px;
+  padding: 13px 15px;
+  border: 1px solid #cfd8e3;
+  border-radius: 12px;
+  background: #fff;
+  color: #1b5f9e;
+  font-size: 15px;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.official-link.primary-link {
+  border-color: #9fc9f5;
+  background: #eef7ff;
+  color: #0768c5;
+}
+
+.official-link span {
+  font-size: 18px;
+}
+
+.external-notice {
+  margin-top: 16px;
+  padding: 13px 14px;
+  border-radius: 12px;
+  background: #f4f5f6;
+}
+
+.external-notice strong {
+  font-size: 13px;
+}
+
+.external-notice p {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+@media (max-width: 520px) {
+  .route-copy-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .external-route-title {
+    font-size: 22px;
+  }
+}

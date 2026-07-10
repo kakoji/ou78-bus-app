@@ -9,7 +9,7 @@
   <meta name="apple-mobile-web-app-title" content="バス時刻表">
   <title>バス時刻表</title>
   <link rel="manifest" href="./manifest.webmanifest">
-  <link rel="stylesheet" href="./styles.css?v=6">
+  <link rel="stylesheet" href="./styles.css?v=7">
   <script src="https://cdn.jsdelivr.net/npm/protobufjs@7.4.0/dist/protobuf.min.js"></script>
 </head>
 <body>
@@ -35,11 +35,17 @@
         <div class="loading">ルートデータを読み込んでいます…</div>
       </div>
 
-      <details id="plannedRoutesBox" class="planned-routes hidden">
-        <summary>今後追加予定のルート</summary>
-        <p>国際興業バスは、外部アプリから利用できる公式データの確認後に追加します。</p>
-        <div id="plannedRoutesList"></div>
-      </details>
+      <section id="externalRoutesSection" class="external-routes-section hidden">
+        <div class="section-heading">
+          <div>
+            <p class="section-kicker">公式サイト連携</p>
+            <h2>国際興業バス</h2>
+          </div>
+          <span class="official-badge">公式情報</span>
+        </div>
+        <p class="external-routes-note">路線を選ぶと、出発地・目的地を確認して国際興業バス公式の接近情報や時刻表を開けます。</p>
+        <div id="externalRoutePairsList" class="route-pair-list"></div>
+      </section>
     </section>
 
     <section id="routeView" class="hidden">
@@ -89,12 +95,52 @@
         <ol id="stopList" class="stop-list"></ol>
       </section>
     </section>
+
+    <section id="externalRouteView" class="hidden">
+      <article class="external-route-card">
+        <div class="external-route-head">
+          <span id="externalRouteCode" class="route-code"></span>
+          <span class="official-badge">国際興業バス公式</span>
+        </div>
+        <h2 id="externalRouteTitle" class="external-route-title"></h2>
+        <p id="externalRouteDirection" class="external-route-direction"></p>
+
+        <div class="route-copy-grid">
+          <div class="route-copy-item">
+            <span class="route-copy-label">出発地</span>
+            <strong id="externalOrigin"></strong>
+            <button id="copyOriginBtn" class="copy-button" type="button">出発地をコピー</button>
+          </div>
+          <div class="route-copy-item">
+            <span class="route-copy-label">目的地</span>
+            <strong id="externalDestination"></strong>
+            <button id="copyDestinationBtn" class="copy-button" type="button">目的地をコピー</button>
+          </div>
+        </div>
+
+        <p id="copyStatus" class="copy-status" aria-live="polite"></p>
+
+        <div class="official-link-list">
+          <a id="busLocationLink" class="official-link primary-link" href="https://transfer.navitime.biz/5931bus/pc/map/Top?window=busLocation" target="_blank" rel="noopener">
+            公式のバス接近情報を開く <span>↗</span>
+          </a>
+          <a id="timetableSearchLink" class="official-link" href="https://transfer.navitime.biz/5931bus/pc/map/Top?window=transfer" target="_blank" rel="noopener">
+            公式の時刻表・経路検索を開く <span>↗</span>
+          </a>
+        </div>
+
+        <div class="external-notice">
+          <strong>現在の対応範囲</strong>
+          <p>国際興業バスは、時刻表・遅れ・現在位置をこの画面へ再表示せず、公式サービスで確認する方式です。</p>
+        </div>
+      </article>
+    </section>
   </main>
 
   <footer>
-    データ提供：東京都交通局・公共交通オープンデータ協議会（CC BY 4.0）
+    都営バス：東京都交通局・公共交通オープンデータ協議会（CC BY 4.0）／国際興業バス：公式サービスへのリンク
   </footer>
 
-  <script src="./app.js?v=6"></script>
+  <script src="./app.js?v=7"></script>
 </body>
 </html>
