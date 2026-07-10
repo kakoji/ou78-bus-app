@@ -1,10 +1,15 @@
-
-const ROUTE_DATA_URL = "./route_data.json?v=3";
+const ROUTES_DATA_URL = "./routes_data.json?v=6";
 const REALTIME_URL = "https://api-public.odpt.org/api/v4/gtfs/realtime/ToeiBus";
+const STORAGE_KEY = "bus-routes-app.selected-route.v1";
 
 const state = {
-  routeData: null,
+  data: null,
+  tripsById: new Map(),
+  routesById: new Map(),
+  calendarByService: new Map(),
+  calendarDateMap: new Map(),
   realtime: null,
+  selectedRoute: null,
   selectedDay: "weekday",
   currentTrips: [],
   selectedTrip: null
@@ -18,63 +23,148 @@ function sec(time) {
   const [h, m, s = "0"] = String(time).split(":").map(Number);
   return h * 3600 + m * 60 + s;
 }
+
 function hhmm(total) {
+  if (total == null || Number.isNaN(total)) return "--:--";
   const h = Math.floor(total / 3600) % 24;
   const m = Math.floor((total % 3600) / 60);
-  return `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
 }
+
+function secondsOfDate(date = new Date()) {
+  return date.getHours() * 3600 + date.getMinutes() * 60 + date.getSeconds();
+}
+
 function nowSeconds() {
-  const d = new Date();
-  return d.getHours() * 3600 + d.getMinutes() * 60 + d.getSeconds();
-}
-function fmtClock(ts) {
-  return new Date(ts).toLocaleTimeString("ja-JP", {hour:"2-digit", minute:"2-digit", second:"2-digit"});
-}
-function dateKey(d = new Date()) {
-  return `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,"0")}${String(d.getDate()).padStart(2,"0")}`;
+  return secondsOfDate(new Date());
 }
 
-async function loadRouteData() {
-  const res = await fetch(ROUTE_DATA_URL, {cache:"no-store"});
-  if (!res.ok) throw new Error("route_data.json が見つかりません。先に generate_route_data.bat を実行して、作成された route_data.json をGitHubへアップロードしてください。");
-  const data = await res.json();
-  if (!data.ok || !Array.isArray(data.trips) || !data.trips.length) {
-    throw new Error("route_data.json が未作成または不完全です。generate_route_data.bat を実行して作り直してください。");
+function fmtClock(timestampMs) {
+  return new Date(timestampMs).toLocaleTimeString("ja-JP", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit"
+  });
+}
+
+function dateKey(date = new Date()) {
+  return `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, "0")}${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function todayDayType() {
+  const day = new Date().getDay();
+  if (day === 0) return "holiday";
+  if (day === 6) return "saturday";
+  return "weekday";
+}
+
+function routeDisplay(route) {
+  return `${route.origin} → ${route.destination}`;
+}
+
+async function clearLegacyServiceWorker() {
+  try {
+    if ("serviceWorker" in navigator) {
+      const registrations = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(registrations.map((registration) => registration.unregister()));
+    }
+    if ("caches" in window) {
+      const keys = await caches.keys();
+      await Promise.all(keys.filter((key) => key.startsWith("ou78-bus-")).map((key) => caches.delete(key)));
+    }
+  } catch (_) {
+    // 古いキャッシュの削除に失敗しても通常利用は続ける。
   }
-  data.calendarByService = new Map(data.calendar.map(c => [c.service_id, c]));
-  return data;
 }
 
-function serviceDayType(serviceId) {
-  const c = state.routeData.calendarByService.get(serviceId);
-  if (!c) return "unknown";
-  const weekdays = ["monday","tuesday","wednesday","thursday","friday"].map(k => String(c[k]) === "1");
-  if (weekdays.some(Boolean)) return "weekday";
-  if (String(c.saturday) === "1") return "saturday";
-  if (String(c.sunday) === "1") return "holiday";
-  return "unknown";
+async function loadRoutesData() {
+  const response = await fetch(ROUTES_DATA_URL, { cache: "no-store" });
+  if (!response.ok) {
+    throw new Error("routes_data.json が見つかりません。build_routes_data.py を実行して作成したファイルをGitHubへアップロードしてください。");
+  }
+
+  const data = await response.json();
+  if (!data.ok || !Array.isArray(data.routePairs) || !data.routePairs.length || !data.trips) {
+    throw new Error("routes_data.json が未作成または不完全です。build_routes_data.py を実行して作り直してください。");
+  }
+
+  state.data = data;
+  state.tripsById = new Map(Object.entries(data.trips));
+  state.routesById = new Map();
+
+  for (const pair of data.routePairs) {
+    for (const route of pair.routes || []) {
+      state.routesById.set(route.id, { ...route, pairId: pair.pairId, pairTitle: pair.title, operator: pair.operator });
+    }
+  }
+
+  state.calendarByService = new Map((data.calendar || []).map((calendar) => [calendar.service_id, calendar]));
+  state.calendarDateMap = new Map();
+  for (const exception of data.calendarDates || []) {
+    state.calendarDateMap.set(`${exception.service_id}:${exception.date}`, String(exception.exception_type));
+  }
 }
 
 function serviceActive(serviceId, date = new Date()) {
   const key = dateKey(date);
-  const exception = (state.routeData.calendarDates || []).find(x => x.service_id === serviceId && x.date === key);
-  if (exception) return String(exception.exception_type) === "1";
-  const c = state.routeData.calendarByService.get(serviceId);
-  if (!c || key < c.start_date || key > c.end_date) return false;
-  const names = ["sunday","monday","tuesday","wednesday","thursday","friday","saturday"];
-  return String(c[names[date.getDay()]]) === "1";
+  const exception = state.calendarDateMap.get(`${serviceId}:${key}`);
+  if (exception) return exception === "1";
+
+  const calendar = state.calendarByService.get(serviceId);
+  if (!calendar) return false;
+  if (key < calendar.start_date || key > calendar.end_date) return false;
+
+  const dayNames = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
+  return String(calendar[dayNames[date.getDay()]]) === "1";
 }
 
-function tripsForDay(type) {
-  let trips = state.routeData.trips.map(t => ({...t, depart: sec(t.origin_departure_time)}));
-  if (type === "auto") trips = trips.filter(t => serviceActive(t.service_id));
-  else trips = trips.filter(t => serviceDayType(t.service_id) === type);
+function serviceMatchesDayType(serviceId, type) {
+  const calendar = state.calendarByService.get(serviceId);
+  if (!calendar) return false;
 
-  const byTime = new Map();
-  for (const t of trips) {
-    if (!byTime.has(t.depart)) byTime.set(t.depart, t);
+  if (type === "weekday") {
+    return ["monday", "tuesday", "wednesday", "thursday", "friday"].some((key) => String(calendar[key]) === "1");
   }
-  return [...byTime.values()].sort((a,b) => a.depart-b.depart);
+  if (type === "saturday") return String(calendar.saturday) === "1";
+  if (type === "holiday") return String(calendar.sunday) === "1";
+  return false;
+}
+
+function combineTrip(reference) {
+  const base = state.tripsById.get(reference.trip_id);
+  if (!base) return null;
+  return {
+    ...base,
+    ...reference,
+    depart: sec(reference.origin_departure_time)
+  };
+}
+
+function tripsForRouteDay(route, type) {
+  let trips = (route.tripRefs || []).map(combineTrip).filter(Boolean);
+
+  if (type === "auto") {
+    trips = trips.filter((trip) => serviceActive(trip.service_id));
+  } else {
+    trips = trips.filter((trip) => serviceMatchesDayType(trip.service_id, type));
+  }
+
+  trips.sort((a, b) => a.depart - b.depart);
+
+  const byDeparture = new Map();
+  for (const trip of trips) {
+    const current = byDeparture.get(trip.depart);
+    if (!current) {
+      byDeparture.set(trip.depart, trip);
+      continue;
+    }
+
+    const currentHasVehicle = Boolean(state.realtime?.map.get(current.trip_id));
+    const candidateHasVehicle = Boolean(state.realtime?.map.get(trip.trip_id));
+    if (!currentHasVehicle && candidateHasVehicle) byDeparture.set(trip.depart, trip);
+  }
+
+  return [...byDeparture.values()].sort((a, b) => a.depart - b.depart);
 }
 
 const protoText = `
@@ -97,107 +187,292 @@ message VehiclePosition {
 `;
 
 async function loadRealtime() {
-  if (!window.protobuf) throw new Error("protobufjsを読み込めませんでした");
-  const res = await fetch(REALTIME_URL, {cache:"no-store"});
-  if (!res.ok) throw new Error(`車両位置を取得できませんでした（${res.status}）`);
+  if (!window.protobuf) throw new Error("車両位置の解析機能を読み込めませんでした");
+
+  const response = await fetch(REALTIME_URL, { cache: "no-store" });
+  if (!response.ok) throw new Error(`車両位置を取得できませんでした（${response.status}）`);
+
   const root = protobuf.parse(protoText).root;
   const FeedMessage = root.lookupType("transit_realtime.FeedMessage");
-  const decoded = FeedMessage.decode(new Uint8Array(await res.arrayBuffer()));
-  const obj = FeedMessage.toObject(decoded, {longs:Number, defaults:false});
+  const decoded = FeedMessage.decode(new Uint8Array(await response.arrayBuffer()));
+  const feed = FeedMessage.toObject(decoded, { longs: Number, defaults: false });
   const map = new Map();
-  (obj.entity || []).forEach(e => {
-    const v = e.vehicle;
-    if (v?.trip?.tripId) map.set(v.trip.tripId, v);
-  });
-  return {map, timestamp: obj.header?.timestamp ? obj.header.timestamp * 1000 : Date.now()};
+
+  for (const entity of feed.entity || []) {
+    const vehicle = entity.vehicle;
+    if (vehicle?.trip?.tripId) map.set(vehicle.trip.tripId, vehicle);
+  }
+
+  return {
+    map,
+    timestamp: feed.header?.timestamp ? feed.header.timestamp * 1000 : Date.now()
+  };
 }
 
 function nearestStopIndex(trip, vehicle) {
   if (vehicle.currentStopSequence != null) {
-    const n = Number(vehicle.currentStopSequence);
-    const idx = trip.stopTimes.findIndex(s => Number(s.stop_sequence) === n);
-    if (idx >= 0) return idx;
+    const sequence = Number(vehicle.currentStopSequence);
+    const index = trip.stopTimes.findIndex((stop) => Number(stop.stop_sequence) === sequence);
+    if (index >= 0) return index;
   }
+
   if (vehicle.stopId) {
-    const idx = trip.stopTimes.findIndex(s => s.stop_id === vehicle.stopId);
-    if (idx >= 0) return idx;
+    const index = trip.stopTimes.findIndex((stop) => stop.stop_id === vehicle.stopId);
+    if (index >= 0) return index;
   }
+
   if (!vehicle.position) return null;
-  let best = null, bestDist = Infinity;
-  trip.stopTimes.forEach((st, i) => {
-    if (st.stop_lat == null || st.stop_lon == null) return;
-    const dy = Number(st.stop_lat) - vehicle.position.latitude;
-    const dx = Number(st.stop_lon) - vehicle.position.longitude;
-    const d = dx*dx + dy*dy;
-    if (d < bestDist) { bestDist = d; best = i; }
+
+  let bestIndex = null;
+  let bestDistance = Infinity;
+  trip.stopTimes.forEach((stop, index) => {
+    if (stop.stop_lat == null || stop.stop_lon == null) return;
+    const latitudeDistance = Number(stop.stop_lat) - vehicle.position.latitude;
+    const longitudeDistance = Number(stop.stop_lon) - vehicle.position.longitude;
+    const distance = latitudeDistance * latitudeDistance + longitudeDistance * longitudeDistance;
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      bestIndex = index;
+    }
   });
-  return best;
+
+  return bestIndex;
 }
 
 function delayInfo(trip) {
-  const v = state.realtime?.map.get(trip.trip_id);
-  if (!v) return {text:"運行開始前・未判定", cls:"unknown", vehicle:null, delay:null};
-  const idx = nearestStopIndex(trip, v);
-  if (idx == null) return {text:"位置取得中", cls:"unknown", vehicle:v, delay:null};
-  const scheduled = sec(trip.stopTimes[idx].arrival_time || trip.stopTimes[idx].departure_time);
-  if (scheduled == null) return {text:"位置取得中", cls:"unknown", vehicle:v, delay:null};
-  let diff = Math.round((nowSeconds() - scheduled) / 60);
-  if (Math.abs(diff) <= 1) return {text:"ほぼ定刻", cls:"ok", vehicle:v, delay:diff, currentIndex:idx};
-  if (diff > 1) return {text:`約${diff}分遅れ`, cls:"late", vehicle:v, delay:diff, currentIndex:idx};
-  return {text:"ほぼ定刻", cls:"ok", vehicle:v, delay:diff, currentIndex:idx};
+  if (!serviceActive(trip.service_id)) {
+    return { text: "時刻表のみ", cls: "unknown", vehicle: null, delay: null, currentIndex: null };
+  }
+
+  const vehicle = state.realtime?.map.get(trip.trip_id);
+  if (!vehicle) {
+    const text = nowSeconds() < trip.depart ? "運行開始前・未判定" : "位置情報なし";
+    return { text, cls: "unknown", vehicle: null, delay: null, currentIndex: null };
+  }
+
+  const currentIndex = nearestStopIndex(trip, vehicle);
+  if (currentIndex == null) {
+    return { text: "位置取得中", cls: "unknown", vehicle, delay: null, currentIndex: null };
+  }
+
+  const stop = trip.stopTimes[currentIndex];
+  const scheduled = sec(stop.arrival_time || stop.departure_time);
+  if (scheduled == null) {
+    return { text: "位置取得中", cls: "unknown", vehicle, delay: null, currentIndex };
+  }
+
+  const observedDate = vehicle.timestamp ? new Date(Number(vehicle.timestamp) * 1000) : new Date();
+  const observed = secondsOfDate(observedDate);
+  const differenceMinutes = Math.round((observed - scheduled) / 60);
+
+  if (differenceMinutes > 90 || differenceMinutes < -30) {
+    return { text: "位置確認中", cls: "unknown", vehicle, delay: null, currentIndex };
+  }
+  if (Math.abs(differenceMinutes) <= 1 || differenceMinutes < 0) {
+    return { text: "ほぼ定刻", cls: "ok", vehicle, delay: differenceMinutes, currentIndex };
+  }
+  return { text: `約${differenceMinutes}分遅れ`, cls: "late", vehicle, delay: differenceMinutes, currentIndex };
+}
+
+function renderRoutePairs() {
+  const lastRouteId = localStorage.getItem(STORAGE_KEY);
+  const html = state.data.routePairs.map((pair) => {
+    const directions = (pair.routes || []).map((route) => {
+      const lastUsed = route.id === lastRouteId ? '<span class="last-used-badge">前回使用</span>' : "";
+      const primaryClass = route.role === "primary" ? " primary" : "";
+      return `
+        <button class="route-direction-button${primaryClass}" type="button" data-route-id="${route.id}">
+          <span class="route-direction-main">
+            <span class="route-direction-name">${route.origin} → ${route.destination}${lastUsed}</span>
+            <span class="route-direction-label">${route.directionLabel}</span>
+          </span>
+          <span class="route-direction-arrow">›</span>
+        </button>`;
+    }).join("");
+
+    return `
+      <article class="route-pair-card">
+        <div class="route-pair-head">
+          <span class="route-code">${pair.routeShortName}</span>
+          <span class="route-operator">${pair.operator}</span>
+        </div>
+        <div class="route-pair-title">${pair.title}</div>
+        <div class="route-direction-list">${directions}</div>
+      </article>`;
+  }).join("");
+
+  $("routePairsList").innerHTML = html;
+  document.querySelectorAll(".route-direction-button").forEach((button) => {
+    button.addEventListener("click", () => selectRoute(button.dataset.routeId));
+  });
+
+  const planned = state.data.plannedRoutes || [];
+  if (planned.length) {
+    $("plannedRoutesBox").classList.remove("hidden");
+    $("plannedRoutesList").innerHTML = planned.map((item) => `
+      <div class="planned-item">
+        <strong>${item.route}　${item.pair}</strong>
+        <span>${item.operator}・準備中</span>
+      </div>`).join("");
+  }
+}
+
+function updateHeaderForPicker() {
+  $("headerEyebrow").textContent = "バス時刻表";
+  $("headerTitle").textContent = "ルートを選ぶ";
+  $("routeListBtn").classList.add("hidden");
+  $("refreshBtn").classList.add("hidden");
+  document.title = "バス時刻表";
+}
+
+function updateHeaderForRoute(route) {
+  $("headerEyebrow").textContent = `${route.operator} ${route.routeShortName}`;
+  $("headerTitle").textContent = routeDisplay(route);
+  $("routeListBtn").classList.remove("hidden");
+  $("refreshBtn").classList.remove("hidden");
+  document.title = `${route.routeShortName} ${routeDisplay(route)}`;
+}
+
+function showRoutePicker() {
+  state.selectedTrip = null;
+  $("routePickerPanel").classList.remove("hidden");
+  $("routeView").classList.add("hidden");
+  updateHeaderForPicker();
+  renderRoutePairs();
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+async function selectRoute(routeId, options = {}) {
+  const route = state.routesById.get(routeId);
+  if (!route) return;
+
+  state.selectedRoute = route;
+  state.selectedTrip = null;
+  localStorage.setItem(STORAGE_KEY, route.id);
+
+  $("routePickerPanel").classList.add("hidden");
+  $("routeView").classList.remove("hidden");
+  updateHeaderForRoute(route);
+  showTab("next");
+  window.scrollTo({ top: 0, behavior: options.initial ? "auto" : "smooth" });
+
+  if (!state.realtime || options.reloadRealtime) {
+    await refresh(false);
+  } else {
+    renderNext();
+    renderTimetable();
+    updateLastUpdatedText();
+  }
+}
+
+function updateLastUpdatedText(realtimeError = false) {
+  const dataTime = state.data?.generatedAt || "";
+  if (state.realtime && !realtimeError) {
+    $("lastUpdated").textContent = `最終更新 ${fmtClock(state.realtime.timestamp)}／時刻表データ ${dataTime}`;
+  } else {
+    $("lastUpdated").textContent = `時刻表は取得済み／車両位置は取得できませんでした　${dataTime}`;
+  }
 }
 
 function renderNext() {
-  const type = $("dayType").value;
-  const selected = sec($("timeInput").value + ":00");
-  const trips = tripsForDay(type).filter(t => t.depart >= selected).slice(0,3);
+  const route = state.selectedRoute;
+  if (!route) return;
+
+  const selectedTime = sec(`${$("timeInput").value}:00`);
+  const trips = tripsForRouteDay(route, $("dayType").value)
+    .filter((trip) => trip.depart >= selectedTime)
+    .slice(0, 3);
+
   state.currentTrips = trips;
+
   if (!trips.length) {
-    $("nextBuses").innerHTML = `<div class="loading">指定時刻以降の便がありません。</div>`;
+    $("nextBuses").innerHTML = '<div class="loading">指定時刻以降の便がありません。</div>';
     return;
   }
-  $("nextBuses").innerHTML = trips.map((t,i) => {
-    const info = delayInfo(t);
-    const stopCount = t.destIndex - t.originIndex;
-    return `<button class="bus-card" data-trip-index="${i}">
-      <div class="bus-top">
-        <div>
-          <div class="departure">${hhmm(t.depart)}発</div>
-          <div class="destination">南常盤台 → 王子五丁目</div>
+
+  $("nextBuses").innerHTML = trips.map((trip, index) => {
+    const info = delayInfo(trip);
+    const stopCount = trip.destIndex - trip.originIndex;
+    return `
+      <button class="bus-card" type="button" data-trip-index="${index}">
+        <div class="bus-top">
+          <div>
+            <div class="departure">${hhmm(trip.depart)}発</div>
+            <div class="destination">${routeDisplay(route)}</div>
+          </div>
+          <div class="delay ${info.cls}">${info.text}</div>
         </div>
-        <div class="delay ${info.cls}">${info.text}</div>
-      </div>
-      <div class="bus-sub">王78・王子駅前方面　${stopCount}区間 <span class="chevron">›</span></div>
-    </button>`;
+        <div class="bus-sub">${route.routeShortName}・${route.directionLabel}　${stopCount}区間 <span class="chevron">›</span></div>
+      </button>`;
   }).join("");
-  document.querySelectorAll(".bus-card").forEach(btn => btn.addEventListener("click", () => openTrip(Number(btn.dataset.tripIndex))));
+
+  document.querySelectorAll(".bus-card").forEach((button) => {
+    button.addEventListener("click", () => openTrip(Number(button.dataset.tripIndex)));
+  });
+}
+
+function isTodayLikeView(type) {
+  return type === "auto" || type === todayDayType();
 }
 
 function renderTimetable(type = state.selectedDay) {
+  const route = state.selectedRoute;
+  if (!route) return;
+
   state.selectedDay = type;
-  document.querySelectorAll(".day-switch button").forEach(b => b.classList.toggle("active", b.dataset.day === type));
-  const trips = tripsForDay(type);
-  const grouped = new Map();
-  trips.forEach(t => {
-    const h = Math.floor(t.depart / 3600);
-    const m = Math.floor((t.depart % 3600) / 60);
-    if (!grouped.has(h)) grouped.set(h, []);
-    grouped.get(h).push(m);
+  document.querySelectorAll(".day-switch button").forEach((button) => {
+    button.classList.toggle("active", button.dataset.day === type);
   });
-  const nextDepart = trips.find(t => t.depart >= nowSeconds())?.depart;
-  $("timetable").innerHTML = [...grouped.entries()].map(([h,mins]) =>
-    `<div class="timetable-hour"><div class="hour">${String(h).padStart(2,"0")}</div>
-      <div class="minutes">${mins.map(m => {
-        const s = h*3600+m*60;
-        const cls = s < nowSeconds() ? "past" : (s === nextDepart ? "next" : "");
-        return `<span class="minute ${cls}">${String(m).padStart(2,"0")}</span>`;
-      }).join("")}</div></div>`
-  ).join("");
+
+  const trips = tripsForRouteDay(route, type);
+  const grouped = new Map();
+  trips.forEach((trip) => {
+    const hour = Math.floor(trip.depart / 3600);
+    const minute = Math.floor((trip.depart % 3600) / 60);
+    if (!grouped.has(hour)) grouped.set(hour, []);
+    grouped.get(hour).push({ minute, depart: trip.depart });
+  });
+
+  if (!grouped.size) {
+    $("timetable").innerHTML = '<div class="loading">この運行日の時刻表がありません。</div>';
+    return;
+  }
+
+  const todayView = isTodayLikeView(type);
+  const nextDeparture = todayView ? trips.find((trip) => trip.depart >= nowSeconds())?.depart : null;
+
+  $("timetable").innerHTML = [...grouped.entries()].map(([hour, minutes]) => `
+    <div class="timetable-hour">
+      <div class="hour">${String(hour).padStart(2, "0")}</div>
+      <div class="minutes">${minutes.map((item) => {
+        const pastClass = todayView && item.depart < nowSeconds() ? "past" : "";
+        const nextClass = item.depart === nextDeparture ? "next" : "";
+        return `<span class="minute ${pastClass} ${nextClass}">${String(item.minute).padStart(2, "0")}</span>`;
+      }).join("")}</div>
+    </div>`).join("");
+}
+
+function detailPositionText(trip, info) {
+  if (info.currentIndex == null || !info.vehicle) return "現在位置はまだ取得できません。";
+
+  const currentStop = trip.stopTimes[info.currentIndex];
+  const currentName = currentStop?.stop_name || "現在地";
+
+  if (info.currentIndex < trip.originIndex) {
+    return `現在地：${currentName}付近。${state.selectedRoute.origin}へ向け走行中です。`;
+  }
+  if (info.currentIndex > trip.destIndex) {
+    return `現在地：${currentName}付近。${state.selectedRoute.destination}を通過済みの可能性があります。`;
+  }
+
+  const remaining = Math.max(0, trip.destIndex - info.currentIndex);
+  return `現在地：${currentName}付近。${state.selectedRoute.destination}まであと${remaining}停留所です。`;
 }
 
 function openTrip(index) {
   const trip = state.currentTrips[index];
-  if (!trip) return;
+  if (!trip || !state.selectedRoute) return;
+
   state.selectedTrip = trip;
   const info = delayInfo(trip);
   $("nextPanel").classList.add("hidden");
@@ -205,30 +480,35 @@ function openTrip(index) {
   $("detailPanel").classList.remove("hidden");
   document.querySelector(".tabs").classList.add("hidden");
 
-  let approachText = "";
-  if (info.currentIndex != null && info.currentIndex < trip.originIndex) {
-    approachText = "／南常盤台へ向かっています";
-  } else if (info.currentIndex != null && info.currentIndex > trip.destIndex) {
-    approachText = "／王子五丁目を通過済みの可能性があります";
-  }
-
-  $("detailHeader").innerHTML = `<div class="detail-card">
-    <div class="detail-title">${hhmm(trip.depart)}発　${info.text}</div>
-    <div class="detail-meta">南常盤台 → 王子五丁目／王78・王子駅前方面${approachText}</div>
-  </div>`;
+  $("detailHeader").innerHTML = `
+    <div class="detail-card">
+      <div class="detail-title">${hhmm(trip.depart)}発　${info.text}</div>
+      <div class="detail-meta">${routeDisplay(state.selectedRoute)}／${state.selectedRoute.routeShortName}・${state.selectedRoute.directionLabel}</div>
+      <div class="detail-position">${detailPositionText(trip, info)}</div>
+    </div>`;
 
   const segment = trip.stopTimes.slice(trip.originIndex, trip.destIndex + 1);
-  const currentGlobal = info.currentIndex;
-  $("stopList").innerHTML = segment.map((st, localIndex) => {
+  const currentGlobalIndex = info.currentIndex;
+
+  $("stopList").innerHTML = segment.map((stop, localIndex) => {
     const globalIndex = trip.originIndex + localIndex;
-    let cls = "";
-    if (currentGlobal != null) {
-      if (globalIndex < currentGlobal) cls = "passed";
-      else if (globalIndex === currentGlobal) cls = "current";
+    let className = "";
+    if (currentGlobalIndex != null) {
+      if (globalIndex < currentGlobalIndex) className = "passed";
+      else if (globalIndex === currentGlobalIndex) className = "current";
     }
-    const marker = cls === "current" ? `<span class="bus-marker">🚌 バスはこの停留所付近です</span>` : "";
-    return `<li class="stop-item ${cls}">${st.stop_name || st.stop_id}${marker}</li>`;
+
+    const marker = className === "current" ? '<span class="bus-marker">🚌 バスはこの停留所付近です</span>' : "";
+    const scheduled = hhmm(sec(stop.arrival_time || stop.departure_time));
+    return `
+      <li class="stop-item ${className}">
+        ${stop.stop_name || stop.stop_id}
+        <span class="stop-time">予定 ${scheduled}</span>
+        ${marker}
+      </li>`;
   }).join("");
+
+  window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
 function showTab(name) {
@@ -236,47 +516,85 @@ function showTab(name) {
   document.querySelector(".tabs").classList.remove("hidden");
   $("nextPanel").classList.toggle("hidden", name !== "next");
   $("timetablePanel").classList.toggle("hidden", name !== "timetable");
-  document.querySelectorAll(".tab").forEach(b => b.classList.toggle("active", b.dataset.tab === name));
+  document.querySelectorAll(".tab").forEach((button) => {
+    button.classList.toggle("active", button.dataset.tab === name);
+  });
   if (name === "timetable") renderTimetable();
 }
 
-async function refresh(all = false) {
+async function refresh(reloadData = false) {
   try {
     $("refreshBtn").disabled = true;
-    if (all || !state.routeData) {
-      state.routeData = await loadRouteData();
+
+    if (reloadData || !state.data) {
+      await loadRoutesData();
+      renderRoutePairs();
     }
+
+    if (!state.selectedRoute) return;
+
+    let realtimeError = false;
     try {
       state.realtime = await loadRealtime();
-      $("lastUpdated").textContent = `最終更新 ${fmtClock(state.realtime.timestamp)}／時刻表データ ${state.routeData.generatedAt || ""}`;
-    } catch (e) {
-      state.realtime = {map:new Map(), timestamp:Date.now()};
-      $("lastUpdated").textContent = `時刻表は取得済み／車両位置は取得できませんでした`;
+    } catch (_) {
+      realtimeError = true;
+      state.realtime = { map: new Map(), timestamp: Date.now() };
     }
+
+    updateLastUpdatedText(realtimeError);
     renderNext();
     renderTimetable();
-  } catch (e) {
-    $("nextBuses").innerHTML = `<div class="error">${e.message}</div>`;
-    $("lastUpdated").textContent = "読み込み失敗";
+  } catch (error) {
+    if (state.selectedRoute) {
+      $("nextBuses").innerHTML = `<div class="error">${error.message}</div>`;
+      $("lastUpdated").textContent = "読み込み失敗";
+    } else {
+      $("routePairsList").innerHTML = `<div class="error">${error.message}</div>`;
+    }
   } finally {
     $("refreshBtn").disabled = false;
   }
 }
 
-function init() {
-  const d = new Date();
-  $("timeInput").value = `${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
+async function init() {
+  const now = new Date();
+  $("timeInput").value = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
   $("dayType").value = "auto";
+  state.selectedDay = todayDayType();
 
-  document.querySelectorAll(".tab").forEach(b => b.addEventListener("click", () => showTab(b.dataset.tab)));
-  document.querySelectorAll(".day-switch button").forEach(b => b.addEventListener("click", () => renderTimetable(b.dataset.day)));
+  document.querySelectorAll(".tab").forEach((button) => {
+    button.addEventListener("click", () => showTab(button.dataset.tab));
+  });
+  document.querySelectorAll(".day-switch button").forEach((button) => {
+    button.addEventListener("click", () => renderTimetable(button.dataset.day));
+  });
   $("backBtn").addEventListener("click", () => showTab("next"));
+  $("routeListBtn").addEventListener("click", showRoutePicker);
   $("refreshBtn").addEventListener("click", () => refresh(false));
   $("timeInput").addEventListener("change", renderNext);
   $("dayType").addEventListener("change", renderNext);
 
-  if ("serviceWorker" in navigator) navigator.serviceWorker.register("./sw.js?v=3").catch(()=>{});
-  refresh(true);
-  setInterval(() => refresh(false), 60000);
+  clearLegacyServiceWorker();
+
+  window.setInterval(() => {
+    const routeIsVisible = !$("routeView").classList.contains("hidden");
+    if (state.selectedRoute && routeIsVisible) refresh(false);
+  }, 60000);
+
+  try {
+    await loadRoutesData();
+    renderRoutePairs();
+
+    const lastRouteId = localStorage.getItem(STORAGE_KEY);
+    if (lastRouteId && state.routesById.has(lastRouteId)) {
+      await selectRoute(lastRouteId, { initial: true });
+    } else {
+      showRoutePicker();
+    }
+  } catch (error) {
+    updateHeaderForPicker();
+    $("routePairsList").innerHTML = `<div class="error">${error.message}</div>`;
+  }
 }
+
 document.addEventListener("DOMContentLoaded", init);

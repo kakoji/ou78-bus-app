@@ -6,66 +6,88 @@
   <meta name="theme-color" content="#0a84ff">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
-  <meta name="apple-mobile-web-app-title" content="王78バス">
-  <title>王78 南常盤台 → 王子五丁目</title>
+  <meta name="apple-mobile-web-app-title" content="バス時刻表">
+  <title>バス時刻表</title>
   <link rel="manifest" href="./manifest.webmanifest">
-  <link rel="stylesheet" href="./styles.css?v=5">
+  <link rel="stylesheet" href="./styles.css?v=6">
   <script src="https://cdn.jsdelivr.net/npm/protobufjs@7.4.0/dist/protobuf.min.js"></script>
 </head>
 <body>
   <header class="topbar">
-    <div>
-      <p class="eyebrow">都営バス 王78</p>
-      <h1>南常盤台 → 王子五丁目</h1>
+    <div class="topbar-copy">
+      <p id="headerEyebrow" class="eyebrow">バス時刻表</p>
+      <h1 id="headerTitle">ルートを選ぶ</h1>
     </div>
-    <button id="refreshBtn" class="icon-button" aria-label="最新情報に更新">↻</button>
+    <div class="top-actions">
+      <button id="routeListBtn" class="text-button hidden" type="button">ルート変更</button>
+      <button id="refreshBtn" class="icon-button hidden" type="button" aria-label="最新情報に更新">↻</button>
+    </div>
   </header>
 
   <main>
-    <section class="status-card">
-      <div class="status-row">
-        <div>
-          <span class="label">指定時刻</span>
-          <input id="timeInput" type="time">
+    <section id="routePickerPanel" class="panel">
+      <div class="intro-card">
+        <h2>登録ルート</h2>
+        <p>見たい区間を選んでください。選んだルートは次回も自動で開きます。</p>
+      </div>
+
+      <div id="routePairsList" class="route-pair-list">
+        <div class="loading">ルートデータを読み込んでいます…</div>
+      </div>
+
+      <details id="plannedRoutesBox" class="planned-routes hidden">
+        <summary>今後追加予定のルート</summary>
+        <p>国際興業バスは、外部アプリから利用できる公式データの確認後に追加します。</p>
+        <div id="plannedRoutesList"></div>
+      </details>
+    </section>
+
+    <section id="routeView" class="hidden">
+      <section class="status-card">
+        <div class="status-row">
+          <div>
+            <span class="label">指定時刻</span>
+            <input id="timeInput" type="time">
+          </div>
+          <div>
+            <span class="label">運行日</span>
+            <select id="dayType">
+              <option value="auto">今日</option>
+              <option value="weekday">平日</option>
+              <option value="saturday">土曜日</option>
+              <option value="holiday">休日</option>
+            </select>
+          </div>
         </div>
-        <div>
-          <span class="label">運行日</span>
-          <select id="dayType">
-            <option value="auto">今日</option>
-            <option value="weekday">平日</option>
-            <option value="saturday">土曜日</option>
-            <option value="holiday">休日</option>
-          </select>
+        <p id="lastUpdated" class="muted">データを読み込んでいます…</p>
+      </section>
+
+      <nav class="tabs" aria-label="表示切替">
+        <button class="tab active" data-tab="next" type="button">次の3便</button>
+        <button class="tab" data-tab="timetable" type="button">時刻表</button>
+      </nav>
+
+      <section id="nextPanel" class="panel">
+        <div id="nextBuses" class="bus-list">
+          <div class="loading">データを取得中です…</div>
         </div>
-      </div>
-      <p id="lastUpdated" class="muted">データを読み込んでいます…</p>
-    </section>
+        <p class="note">遅れ時間は、公開されている車両位置と予定時刻を照合した概算です。</p>
+      </section>
 
-    <nav class="tabs" aria-label="表示切替">
-      <button class="tab active" data-tab="next">次の3便</button>
-      <button class="tab" data-tab="timetable">時刻表</button>
-    </nav>
+      <section id="timetablePanel" class="panel hidden">
+        <div class="day-switch">
+          <button data-day="weekday" type="button">平日</button>
+          <button data-day="saturday" type="button">土曜</button>
+          <button data-day="holiday" type="button">休日</button>
+        </div>
+        <div id="timetable" class="timetable"></div>
+      </section>
 
-    <section id="nextPanel" class="panel">
-      <div id="nextBuses" class="bus-list">
-        <div class="loading">データを取得中です…</div>
-      </div>
-      <p class="note">遅れ時間は、公開されている車両位置と予定時刻を照合した概算です。</p>
-    </section>
-
-    <section id="timetablePanel" class="panel hidden">
-      <div class="day-switch">
-        <button data-day="weekday">平日</button>
-        <button data-day="saturday">土曜</button>
-        <button data-day="holiday">休日</button>
-      </div>
-      <div id="timetable" class="timetable"></div>
-    </section>
-
-    <section id="detailPanel" class="panel hidden">
-      <button id="backBtn" class="back-button">‹ 次の3便へ戻る</button>
-      <div id="detailHeader"></div>
-      <ol id="stopList" class="stop-list"></ol>
+      <section id="detailPanel" class="panel hidden">
+        <button id="backBtn" class="back-button" type="button">‹ 次の3便へ戻る</button>
+        <div id="detailHeader"></div>
+        <ol id="stopList" class="stop-list"></ol>
+      </section>
     </section>
   </main>
 
@@ -73,6 +95,6 @@
     データ提供：東京都交通局・公共交通オープンデータ協議会（CC BY 4.0）
   </footer>
 
-  <script src="./app.js?v=3"></script>
+  <script src="./app.js?v=6"></script>
 </body>
 </html>
