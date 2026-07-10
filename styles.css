@@ -9,7 +9,7 @@
   --line: #d8dadd;
 }
 * { box-sizing: border-box; }
-body { margin: 0; min-height: 100vh; }
+body { margin: 0; min-height: 100vh; overflow-x: hidden; }
 button, input, select { font: inherit; }
 
 .topbar {
@@ -46,9 +46,11 @@ main {
   border-radius: 16px;
   box-shadow: 0 2px 12px rgba(0,0,0,.05);
 }
-.status-card { padding: 14px; }
+.status-card {
+  padding: 14px;
+  overflow: hidden;
+}
 
-/* v4: iPhoneで指定時刻と運行日が重ならないようにする */
 .status-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
@@ -56,9 +58,12 @@ main {
 }
 .status-row > div {
   min-width: 0;
+  max-width: 100%;
 }
 .status-row input,
 .status-row select {
+  display: block;
+  width: 100%;
   min-width: 0;
   max-width: 100%;
 }
@@ -70,7 +75,6 @@ main {
   margin-bottom: 5px;
 }
 input, select {
-  width: 100%;
   border: 1px solid #cfd2d6;
   border-radius: 10px;
   background: #fff;
@@ -244,8 +248,13 @@ footer {
   text-align: center;
 }
 
-/* iPhone幅では縦並びにして完全に重なりを防ぐ */
+/* v5: iPhone幅では入力欄を少し内側に収めて右はみ出しを防ぐ */
 @media (max-width: 520px) {
+  main {
+    padding-left: 14px;
+    padding-right: 14px;
+  }
+
   .status-row {
     grid-template-columns: 1fr;
     gap: 14px;
@@ -255,8 +264,19 @@ footer {
     padding: 16px;
   }
 
+  .status-row > div {
+    width: 100%;
+    padding-right: 12px;
+  }
+
   input,
   select {
     font-size: 18px;
+  }
+
+  .status-row input,
+  .status-row select {
+    width: 100%;
+    max-width: 100%;
   }
 }
